@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Raw source video tiles (not served, large)
+public/videoTilesPerMonth_mp4_512new/
+public/videoTilesPerYear_mp4_512new/
+
+# TypeScript build info
+tsconfig.tsbuildinfo
+
+# Env files
+.env*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Leaflet core styles */
+@import 'leaflet/dist/leaflet.css';
+
+/* ── Map container ───────────────────────────────────────────────────────── */
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+/* Dark background for areas with no tile data (empty ocean / zoom 0 removed) */
+.leaflet-container {
+  background-color: #0f1117;
+}
+
+/* ── Tile interactivity ──────────────────────────────────────────────────── */
+/*
+  Leaflet normally swallows pointer events on tile containers.
+  Restore them so canvas2 (the colour-mapped tile) receives click events.
+*/
+#map .leaflet-interactive .leaflet-tile-container {
+  pointer-events: initial;
+}
+
+/* ── Video tiles ─────────────────────────────────────────────────────────── */
+/*
+  Each tile div contains: <video> (hidden) + canvas1 (hidden) + canvas2 (shown).
+  Position the canvases absolutely so they stack on top of each other and fill
+  the full 512×512 tile cell.
+*/
+.leaflet-tile-container video,
+.leaflet-tile-container canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* canvas2 (.color) is the only element that should be visible */
+.leaflet-tile-container canvas[name='canvas1'] {
+  display: none !important;
+}
