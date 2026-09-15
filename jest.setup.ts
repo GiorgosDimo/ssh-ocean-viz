@@ -57,7 +57,10 @@ export const mockCtx2d = {
 };
 
 // Patch prototype once so every canvas element in every test gets the stubs.
-HTMLCanvasElement.prototype.getContext = function (
+// Cast to `any`: the overloaded getContext signature can't be satisfied by a
+// single generic function; the cast is safe because this file is test-only.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(HTMLCanvasElement.prototype as any).getContext = function (
   type: string,
 ): RenderingContext | null {
   if (type === 'webgl') return mockGl as unknown as WebGLRenderingContext;
