@@ -9,7 +9,12 @@ const TRANSPARENT_THRESHOLD = 30;
 // frame.  mediaSync was removed in favour of this explicit seek approach
 // because per-video rate-control causes inter-tile drift that shows as seam
 // artifacts at tile borders.
-const SEEK_THRESHOLD = 0.04;
+const SEEK_THRESHOLD             = 0.04;
+// If the spread between any two videos' currentTime exceeds this, all videos
+// are re-seeked together so they land on the same frame.  Set to 2.5×
+// SEEK_THRESHOLD so normal per-video drift (≤ 2 × SEEK_THRESHOLD spread) is
+// handled by the regular per-target check without triggering a full resync.
+const INTER_VIDEO_DRIFT_THRESHOLD = 0.1;
 
 export interface VideoTileLayerOptions extends L.GridLayerOptions {
   src:          string;
@@ -163,6 +168,20 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   // which would reset the decoder and stall tiles indefinitely (especially
   // at zoom 3 where many videos seek simultaneously).
   const pendingSeekUrls  = new Set<string>();
+  // Batch all rVFC/seeked-triggered paints into one rAF so every tile composites
+  // in the same browser frame instead of trickling in over several ms.
+  const pendingRafPaints = new Set<string>();
+  let   paintBatchRafId: number | null = null;
+  const schedulePaintFrame = (tileId: string) => {
+    pendingRafPaints.add(tileId);
+    if (paintBatchRafId === null) {
+      paintBatchRafId = requestAnimationFrame(() => {
+        paintBatchRafId = null;
+        pendingRafPaints.forEach(id => activeTiles.get(id)?.paintFrame());
+        pendingRafPaints.clear();
+      });
+    }
+  };
   let   anyTileStartedLoading = false;
 
   // Persistent seeked listeners (repaint when paused); cleaned on tileunload.
@@ -211,8 +230,33 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   // Seek any video whose currentTime has drifted past SEEK_THRESHOLD from the
   // target.  Called by both the RAF loop and the setTimeout tick.
   const seekDriftedVideos = () => {
+    // Don't issue new seeks while any video from the last batch is still
+    // decoding: fast tiles would get re-seeked to a newer target before slow
+    // tiles finish the old one, showing two different frames across tile borders.
+    if (pendingSeekUrls.size > 0) return;
     const { position } = timingObject.query();
     const targetTime   = position * speedRatio;
+
+    // Measure inter-video spread: if any two videos differ by more than
+    // INTER_VIDEO_DRIFT_THRESHOLD, one has fallen behind the group.  Seek
+    // every video back to targetTime so they all land on the same frame
+    // instead of only patching the outlier (which would still look unsynced
+    // for the tick where the others haven't been re-seeked yet).
+    const urlToTime = new Map<string, number>();
+    activeTiles.forEach((_, tileId) => {
+      if (pendingSeekTiles.has(tileId)) return;
+      const url   = tileIdToUrl.get(tileId);
+      const entry = url ? videoPool.get(url) : undefined;
+      if (!entry?.isReady || urlToTime.has(url!)) return;
+      urlToTime.set(url!, entry.video.currentTime);
+    });
+    let hardResync = false;
+    if (urlToTime.size >= 2) {
+      const times  = [...urlToTime.values()];
+      const spread = Math.max(...times) - Math.min(...times);
+      if (spread > INTER_VIDEO_DRIFT_THRESHOLD) hardResync = true;
+    }
+
     const urlsSought   = new Set<string>();
     activeTiles.forEach((_, tileId) => {
       if (pendingSeekTiles.has(tileId)) return;
@@ -220,7 +264,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       const entry = url ? videoPool.get(url) : undefined;
       if (!entry?.isReady || urlsSought.has(url!) || pendingSeekUrls.has(url!)) return;
       const { video } = entry;
-      if (Math.abs(video.currentTime - targetTime) > SEEK_THRESHOLD) {
+      if (hardResync || Math.abs(video.currentTime - targetTime) > SEEK_THRESHOLD) {
         urlsSought.add(url!);
         pendingSeekUrls.add(url!);
         video.currentTime = targetTime;
@@ -325,8 +369,8 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       if (supportsRVFC) {
         const onNewFrame = () => {
           if (newEntry.destroyed) return; // pool entry released; stop loop
-          activeTiles.forEach(({ paintFrame }, tileId) => {
-            if (tileIdToUrl.get(tileId) === url) paintFrame();
+          activeTiles.forEach((_, tileId) => {
+            if (tileIdToUrl.get(tileId) === url) schedulePaintFrame(tileId);
           });
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (video as any).requestVideoFrameCallback(onNewFrame);
@@ -364,7 +408,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
         tileSize:    512,
         noWrap:      false,
         interactive: true,
-        keepBuffer:  2,
+        keepBuffer:  0,
       });
     },
 
@@ -488,7 +532,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
         // Clear any RAF-pending-seek guard so the next tick can drift-check again.
         const tileUrl = tileIdToUrl.get(tileId);
         if (tileUrl) pendingSeekUrls.delete(tileUrl);
-        paintFrame();
+        schedulePaintFrame(tileId);
       };
       video.addEventListener('seeked', onVideoSeeked);
       paintListeners.set(tileId, { video, fn: onVideoSeeked });
@@ -681,6 +725,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
 
     activeTiles.delete(tileId);
     pendingSeekTiles.delete(tileId);
+    pendingRafPaints.delete(tileId);
     tileIdToUrl.delete(tileId);
     const tc = tileIdToCanvas.get(tileId);
     if (tc) { canvasToTileId.delete(tc); tileIdToCanvas.delete(tileId); }
@@ -695,6 +740,8 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   // Release the shared WebGL context when the layer is removed.
   layer.on('remove', () => {
     timingObject.off('timeupdate', layerTimingListener);
+    stopLayerDraw();
+    if (paintBatchRafId !== null) { cancelAnimationFrame(paintBatchRafId); paintBatchRafId = null; }
     if (sharedLGL) {
       const ext = sharedLGL.gl.getExtension('WEBGL_lose_context');
       if (ext) ext.loseContext();
