@@ -69,11 +69,12 @@ One `<video>` element per unique URL, reference-counted. On release: `removeAttr
 ## Getting started
 
 ```bash
+cp .env.example .env.local   # add your Mapbox token
 npm install
 npm run dev
 ```
 
-Tiles are pre-built and committed under `public/tiles/`. No external data fetch required.
+Tiles are pre-built and committed under `public/tiles/` (29 MB). No external data fetch required.
 
 ```
 public/tiles/
@@ -83,12 +84,9 @@ public/tiles/
 
 ### Deploy to Vercel
 
-```bash
-npm run build
-vercel deploy
-```
-
-Next.js serves `public/` statically; no extra CDN config needed.
+1. Import the repo at [vercel.com/new](https://vercel.com/new)
+2. Add `NEXT_PUBLIC_MAPBOX_TOKEN` in **Project Settings → Environment Variables**
+3. Deploy — Next.js serves `public/` statically, no CDN config needed
 
 ---
 
