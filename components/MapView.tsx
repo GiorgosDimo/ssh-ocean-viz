@@ -334,8 +334,21 @@ export default function MapView() {
         </div>
       )}
 
-      {/* Control bar */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-3 bg-white/90 backdrop-blur-sm px-5 py-2.5 rounded-2xl shadow-lg border border-white/60">
+      {/* Control panel
+            Mobile  : full-width bottom sheet, stacked layout
+            sm+     : top-centre pill, horizontal layout (original)       */}
+      <div className={[
+        'absolute z-[1000]',
+        'bg-white/95 backdrop-blur-sm',
+        // mobile
+        'bottom-0 left-0 right-0 flex flex-col gap-3',
+        'px-4 pt-3 pb-6 rounded-t-2xl border-t border-gray-200',
+        'shadow-[0_-4px_16px_rgba(0,0,0,0.12)]',
+        // sm+
+        'sm:bottom-auto sm:top-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2',
+        'sm:flex-row sm:items-center sm:gap-3',
+        'sm:px-5 sm:py-2.5 sm:rounded-2xl sm:border sm:border-white/60 sm:shadow-lg sm:bg-white/90',
+      ].join(' ')}>
         <PlaybackControls
           isPlaying={isPlaying}
           position={position}
@@ -355,26 +368,31 @@ export default function MapView() {
           onScrubEnd={handleScrubEnd}
         />
 
-        <div className="w-px h-8 bg-gray-200" />
+        {/* Divider — desktop only */}
+        <div className="hidden sm:block w-px h-8 bg-gray-200" />
 
         {/* SSH toggle */}
         <button
           onClick={handleSshToggle}
-          title={sshEnabled ? 'Disable SSH readout' : 'Enable SSH readout (hover)'}
-          className={`px-3 py-1 rounded-lg text-sm font-medium transition-all active:scale-95 ${
+          title={sshEnabled ? 'Disable SSH readout' : 'Enable SSH readout'}
+          className={`self-start sm:self-auto px-3 py-1.5 sm:py-1 rounded-lg text-sm font-medium transition-all active:scale-95 ${
             sshEnabled
               ? 'bg-blue-500 text-white shadow-sm'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
-          SSH
+          SSH readout
         </button>
       </div>
 
-      {/* Colormap legend — bottom right */}
-      <ColormapLegend value={colormapName} onChange={setColormapName} />
+      {/* Colormap legend
+            Mobile : sits above the bottom sheet (~160 px clearance)
+            sm+    : original bottom-right position                       */}
+      <div className="absolute bottom-[168px] right-2 sm:bottom-6 sm:right-4 z-[1000]">
+        <ColormapLegend value={colormapName} onChange={setColormapName} />
+      </div>
 
-      {/* SSH hover readout */}
+      {/* SSH hover readout — centred, clear of the bottom sheet on mobile */}
       <SshReadout value={sshEnabled ? sshValue : null} />
     </div>
   );

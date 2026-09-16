@@ -42,37 +42,54 @@ export default function PlaybackControls({
   const speedMaxPct = Math.round(speedMax * 100);
 
   return (
-    <div className="flex items-center gap-3">
-      {/* ── Transport buttons ── */}
-      <button
-        onClick={onReset}
-        title="Reset to start"
-        className="px-3 py-1 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 active:scale-95 transition-all whitespace-nowrap"
-      >
-        ⏮ Reset
-      </button>
+    // Mobile: vertical stack filling the bottom sheet.
+    // sm+: single horizontal row (original layout).
+    <div className="flex flex-col gap-2 w-full sm:flex-row sm:items-center sm:gap-3 sm:w-auto">
 
-      {isPlaying ? (
+      {/* ── Row 1 (mobile) / inline (desktop): transport + date label ── */}
+      <div className="flex items-center gap-2">
         <button
-          onClick={onPause}
-          title="Pause"
-          className="px-3 py-1 rounded-lg text-sm font-medium bg-amber-100 hover:bg-amber-200 active:scale-95 transition-all"
+          onClick={onReset}
+          title="Reset to start"
+          aria-label="Reset to start"
+          className="px-2 py-1.5 sm:px-3 sm:py-1 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 active:scale-95 transition-all"
         >
-          ⏸ Pause
+          ⏮<span className="hidden sm:inline"> Reset</span>
         </button>
-      ) : (
-        <button
-          onClick={onPlay}
-          title="Play"
-          className="px-3 py-1 rounded-lg text-sm font-medium bg-green-100 hover:bg-green-200 active:scale-95 transition-all"
-        >
-          ▶ Play
-        </button>
-      )}
+
+        {isPlaying ? (
+          <button
+            onClick={onPause}
+            title="Pause"
+            aria-label="Pause"
+            className="px-2 py-1.5 sm:px-3 sm:py-1 rounded-lg text-sm font-medium bg-amber-100 hover:bg-amber-200 active:scale-95 transition-all"
+          >
+            ⏸<span className="hidden sm:inline"> Pause</span>
+          </button>
+        ) : (
+          <button
+            onClick={onPlay}
+            title="Play"
+            aria-label="Play"
+            className="px-2 py-1.5 sm:px-3 sm:py-1 rounded-lg text-sm font-medium bg-green-100 hover:bg-green-200 active:scale-95 transition-all"
+          >
+            ▶<span className="hidden sm:inline"> Play</span>
+          </button>
+        )}
+
+        {/* Date label — shown inline with transport on mobile */}
+        <span className="sm:hidden flex-1 text-center text-sm font-semibold text-gray-800 tabular-nums truncate">
+          {dateLabel}
+        </span>
+
+        {/* Speed badge — mobile only quick-read */}
+        <span className="sm:hidden text-xs font-medium text-gray-500 tabular-nums">{speedPct}%</span>
+      </div>
 
       {/* ── Timeline scrubber ── */}
-      <div className="flex flex-col gap-0.5 min-w-[260px]">
-        <div className="flex justify-between text-[10px] text-gray-500 tabular-nums px-0.5">
+      <div className="flex flex-col gap-0.5 w-full sm:min-w-[260px] sm:w-auto">
+        {/* Date / end header — desktop only (mobile shows date in row 1) */}
+        <div className="hidden sm:flex justify-between text-[10px] text-gray-500 tabular-nums px-0.5">
           <span className="font-semibold text-gray-700">{dateLabel}</span>
           <span>{endDateLabel}</span>
         </div>
@@ -104,7 +121,7 @@ export default function PlaybackControls({
           step={5}
           value={speedPct}
           onChange={(e) => onSpeedChange(Number(e.target.value) / 100)}
-          className="w-20 h-1.5 accent-blue-500 cursor-pointer"
+          className="w-full sm:w-20 h-1.5 accent-blue-500 cursor-pointer"
           title={`${speedPct}%`}
         />
         <span className="text-xs font-medium text-gray-700 w-10 tabular-nums text-right">

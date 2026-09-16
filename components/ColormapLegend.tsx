@@ -28,7 +28,7 @@ export default function ColormapLegend({ value, onChange }: Props) {
   const current = COLORMAPS.find((c) => c.name === value)!;
 
   return (
-    <div className="absolute bottom-6 right-4 z-[1000] select-none">
+    <div className="select-none">
       {/* ── Dropdown list (expands upward) ── */}
       {open && (
         <div className="mb-2 flex flex-col gap-1 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 p-2 w-52">
