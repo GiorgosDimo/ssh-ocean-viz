@@ -252,7 +252,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
     });
     let hardResync = false;
     if (urlToTime.size >= 2) {
-      const times  = [...urlToTime.values()];
+      const times  = Array.from(urlToTime.values());
       const spread = Math.max(...times) - Math.min(...times);
       if (spread > INTER_VIDEO_DRIFT_THRESHOLD) hardResync = true;
     }

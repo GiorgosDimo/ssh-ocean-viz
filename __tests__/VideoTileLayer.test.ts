@@ -975,7 +975,8 @@ describe('VideoTileLayer – layer switch round-trip (suspend → unload → rel
     // Make getExtension return a real loseContext stub so the remove handler
     // actually marks the canvas as "context-lost" in our mock environment.
     let contextLost = false;
-    mockGl.getExtension = jest.fn((name: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockGl as any).getExtension = jest.fn((name: string) => {
       if (name === 'WEBGL_lose_context') {
         return { loseContext: () => { contextLost = true; } };
       }

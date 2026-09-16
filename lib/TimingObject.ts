@@ -36,8 +36,8 @@ export class TimingObject {
     this._velocity = 0;
     this._wallRef = this._now();
     this._listeners = new Map<TimingEvent, Set<TimingCallback>>([
-      ['timeupdate', new Set()],
-      ['change', new Set()],
+      ['timeupdate', new Set<TimingCallback>()],
+      ['change', new Set<TimingCallback>()],
     ]);
   }
 
