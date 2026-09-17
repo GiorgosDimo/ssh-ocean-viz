@@ -503,7 +503,9 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
             glCanvasTime = ct;
             glCanvasLut  = lutVersion;
           }
+          ctx2d.globalCompositeOperation = 'copy';
           ctx2d.drawImage(sharedGLCanvas, 0, 0);
+          ctx2d.globalCompositeOperation = 'source-over';
         } else if (ctx1 && ctx2d) {
           ctx1.drawImage(video, 0, 0, canvas.width, canvas.height);
           const imageData = ctx1.getImageData(0, 0, canvas.width, canvas.height);

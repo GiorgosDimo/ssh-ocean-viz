@@ -58,14 +58,14 @@ export default function MapView() {
   const containerRef   = useRef<HTMLDivElement>(null);
   const mapRef         = useRef<L.Map | null>(null);
   const timingRef      = useRef<TimingObject | null>(null);
-  const rgbsRef        = useRef<RgbColor[]>(buildColorLUT('Spectral'));
+  const rgbsRef        = useRef<RgbColor[]>(buildColorLUT('Viridis'));
   const speedRef       = useRef<number>(1.0);
   const activeLayerRef = useRef<LayerKey>('month');
   const layersRef      = useRef<Record<LayerKey, L.GridLayer> | null>(null);
   const sshEnabledRef  = useRef(false);
   const scrubPlayRef   = useRef(false); // was playing before scrub started
 
-  const [colormapName, setColormapName] = useState<ColormapName>('Spectral');
+  const [colormapName, setColormapName] = useState<ColormapName>('Viridis');
   const [position,    setPosition]    = useState(0);
   const [isPlaying,   setIsPlaying]   = useState(false);
   const [sshValue,    setSshValue]    = useState<string | null>(null);
@@ -390,6 +390,13 @@ export default function MapView() {
             sm+    : original bottom-right position                       */}
       <div className="absolute bottom-[168px] right-2 sm:bottom-6 sm:right-4 z-[1000]">
         <ColormapLegend value={colormapName} onChange={setColormapName} />
+      </div>
+
+      {/* Title */}
+      <div className="absolute bottom-[168px] left-2 sm:bottom-6 sm:left-4 z-[1000] pointer-events-none">
+        <div className="bg-black/60 backdrop-blur-sm text-white px-3 py-1.5 rounded-xl text-xs font-medium leading-snug max-w-[200px] sm:max-w-none">
+          Sea Surface Height (SSH) Anomaly<br className="sm:hidden" /><span className="hidden sm:inline"> · </span>1993–2018
+        </div>
       </div>
 
       {/* SSH hover readout — centred, clear of the bottom sheet on mobile */}

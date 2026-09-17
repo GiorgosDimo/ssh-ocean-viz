@@ -9,7 +9,6 @@ const COLORMAPS: { name: ColormapName; label: string }[] = [
   { name: 'RdYlBu',   label: 'Rd–Yl–Bl' },
   { name: 'Viridis',  label: 'Viridis'   },
   { name: 'Plasma',   label: 'Plasma'    },
-  { name: 'Inferno',  label: 'Inferno'   },
   { name: 'Turbo',    label: 'Turbo'     },
   { name: 'BrBG',     label: 'Br–Green'  },
   { name: 'PiYG',     label: 'Pink–Grn'  },
