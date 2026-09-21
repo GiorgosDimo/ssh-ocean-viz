@@ -4,7 +4,7 @@ Interactive visualization of **Sea Surface Height (SSH)** anomalies across the g
 
 Built as part of an MSc thesis in oceanography / geospatial data science.
 
-**[Live Demo →](https://ssh-ocean-6aqjzpbty-georgosdimopoulos-2195.vercel.app/)**
+**[Live Demo →](https://ssh-ocean-viz.vercel.app/)**
 
 ![SSH Visualization](https://raw.githubusercontent.com/GiorgosDimo/ssh-ocean-viz/main/docs/preview.gif)
 
