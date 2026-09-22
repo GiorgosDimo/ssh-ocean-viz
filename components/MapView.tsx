@@ -91,10 +91,11 @@ export default function MapView() {
     if (!containerRef.current || mapRef.current) return;
 
     const map = new L.Map(containerRef.current, {
-      center:  new L.LatLng(0, 0),
-      zoom:    2,
-      minZoom: 1,   // zoom 0 has no tile data
-      maxZoom: 3,
+      center:        new L.LatLng(0, 0),
+      zoom:          2,
+      minZoom:       1,
+      maxZoom:       3,
+      worldCopyJump: true,
     });
     mapRef.current = map;
 
