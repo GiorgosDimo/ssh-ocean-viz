@@ -163,10 +163,11 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   let   sampleCanvas: HTMLCanvasElement | null = null;
   let   sampleCtx:    CanvasRenderingContext2D | null = null;
   const pendingSeekTiles = new Set<string>();
-  // URLs whose video is currently mid-seek; prevents the RAF from issuing a
-  // new seek on the same video before the previous one has decoded its frame,
-  // which would reset the decoder and stall tiles indefinitely (especially
-  // at zoom 3 where many videos seek simultaneously).
+  // URLs whose video is currently mid-seek.  seekDriftedVideos() blocks while
+  // this is non-empty so all tiles in a batch land on the same frame.  When
+  // the last seek in a batch completes, onVideoSeeked chains immediately into
+  // seekDriftedVideos() so a target that arrived mid-batch is picked up without
+  // waiting for the next 100ms tick.
   const pendingSeekUrls  = new Set<string>();
   // Batch all rVFC/seeked-triggered paints into one rAF so every tile composites
   // in the same browser frame instead of trickling in over several ms.
@@ -531,10 +532,14 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       // seeking, which may show one stale frame; this handler repaints with
       // the correct decoded frame ~30 ms later.
       const onVideoSeeked = () => {
-        // Clear any RAF-pending-seek guard so the next tick can drift-check again.
         const tileUrl = tileIdToUrl.get(tileId);
         if (tileUrl) pendingSeekUrls.delete(tileUrl);
         schedulePaintFrame(tileId);
+        // Chain: if this was the last pending seek in the batch, immediately
+        // seek to the latest target rather than waiting up to 100ms for the
+        // next tick.  seekDriftedVideos() returns early if pendingSeekUrls is
+        // non-empty, so concurrent calls from tiles sharing a URL are no-ops.
+        if (pendingSeekUrls.size === 0) seekDriftedVideos();
       };
       video.addEventListener('seeked', onVideoSeeked);
       paintListeners.set(tileId, { video, fn: onVideoSeeked });
