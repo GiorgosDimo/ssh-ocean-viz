@@ -1,9 +1,17 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 /* Leaflet core styles */
 @import 'leaflet/dist/leaflet.css';
+
+/* Loading spinner */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
 
 /* ── Map container ───────────────────────────────────────────────────────── */
 #map {

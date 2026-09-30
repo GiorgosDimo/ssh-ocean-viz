@@ -21,9 +21,9 @@ export interface RgbColor {
 }
 
 export type ColormapName =
-  | 'Spectral' | 'RdBu'   | 'Viridis' | 'Plasma'
-  | 'Inferno'  | 'Turbo'  | 'RdYlBu'  | 'BrBG'
-  | 'PiYG'     | 'PRGn'   | 'Greys';
+  | 'Spectral' | 'RdBu'  | 'Viridis' | 'Plasma'
+  | 'Turbo'    | 'RdYlBu'| 'BrBG'    | 'PiYG'
+  | 'PRGn'     | 'Greys';
 
 // SSH range shown on the colormap legend (metres).
 export const SSH_MIN = -1.0;
@@ -39,7 +39,6 @@ export const COLORMAP_PREVIEWS: Record<ColormapName, string> = {
   RdBu:     'linear-gradient(to right,#4575b4,#abd9e9,#f7f7f7,#f4a582,#d73027)',
   Viridis:  'linear-gradient(to right,#fde725,#5ec962,#21918c,#3b528b,#440154)',
   Plasma:   'linear-gradient(to right,#f0f921,#f89540,#cc4778,#7201a8,#0d0887)',
-  Inferno:  'linear-gradient(to right,#fcffa4,#f98c0a,#bc3754,#57106e,#000004)',
   Turbo:    'linear-gradient(to right,#7a0403,#f77f00,#c5e642,#22c1b0,#30123b)',
   RdYlBu:   'linear-gradient(to right,#313695,#74add1,#ffffbf,#f46d43,#a50026)',
   BrBG:     'linear-gradient(to right,#003c30,#35978f,#f5f5f5,#bf812d,#543005)',

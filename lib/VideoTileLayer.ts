@@ -32,6 +32,15 @@ export interface VideoTileLayerOptions extends L.GridLayerOptions {
   speedRatio?:  number;
 }
 
+export interface VideoLayer extends L.GridLayer {
+  repaintAllTiles:   () => void;
+  kickLayerDraw:     () => void;
+  syncAllTiles:      () => void;
+  forceSyncAllTiles: () => void;
+  samplePixel:       (canvas: HTMLCanvasElement, x: number, y: number) => number | null;
+  setSuspended:      (isSuspended: boolean) => void;
+}
+
 // ── WebGL shaders ─────────────────────────────────────────────────────────────
 const VERT = `
   attribute vec2 a_pos;
@@ -123,7 +132,7 @@ function uploadLUT(lgl: LayerGL, rgbs: RgbColor[]) {
 }
 
 // ── Layer factory ─────────────────────────────────────────────────────────────
-export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLayer {
+export function createVideoTileLayer(options: VideoTileLayerOptions): VideoLayer {
   const { src, timingObject, speedRatio = 1 } = options;
 
   // Feature-detect once: requestVideoFrameCallback fires at compositor time
@@ -794,5 +803,5 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
     sharedGLCanvas = document.createElement('canvas');
   });
 
-  return layer;
+  return layer as VideoLayer;
 }

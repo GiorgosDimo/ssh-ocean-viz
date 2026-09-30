@@ -1,18 +1,13 @@
 import dynamic from 'next/dynamic';
 
-/**
- * Leaflet requires the browser DOM and cannot run on the server.
- * `{ ssr: false }` tells Next.js to skip server-rendering MapView entirely.
- *
- * A simple spinner is shown while the client bundle loads.
- */
+// Leaflet requires the browser DOM — skip SSR for MapView.
 const MapView = dynamic(() => import('@/components/MapView'), {
   ssr: false,
   loading: () => (
-    <div className="w-screen h-screen flex items-center justify-center bg-gray-900 text-white">
-      <div className="text-center space-y-3">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-sm text-gray-400">Loading map…</p>
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#111827', color: 'white' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ width: 40, height: 40, border: '4px solid #3b82f6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+        <p style={{ fontSize: 14, color: '#9ca3af', margin: 0 }}>Loading map…</p>
       </div>
     </div>
   ),
@@ -20,7 +15,7 @@ const MapView = dynamic(() => import('@/components/MapView'), {
 
 export default function Home() {
   return (
-    <main className="w-screen h-screen">
+    <main style={{ width: '100vw', height: '100vh' }}>
       <MapView />
     </main>
   );

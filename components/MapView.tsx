@@ -3,79 +3,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import { TimingObject } from '@/lib/TimingObject';
-import { createVideoTileLayer } from '@/lib/VideoTileLayer';
+import { createVideoTileLayer, type VideoLayer } from '@/lib/VideoTileLayer';
 import { buildColorLUT, brightnessToSSH, type ColormapName } from '@/lib/colormap';
 import type { RgbColor } from '@/lib/colormap';
 import { Paper, Button, Box, CircularProgress, Typography } from '@mui/material';
-import styled from 'styled-components';
 import PlaybackControls from './PlaybackControls';
 import ColormapLegend from './ColormapLegend';
 import SshReadout from './SshReadout';
-
-const MapRoot = styled.div`
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: #0f1117;
-`;
-
-const MapContainer = styled.div`
-  width: 100%;
-  height: 100%;
-`;
-
-const ControlPanel = styled(Paper)`
-  position: absolute !important;
-  z-index: 1000;
-  backdrop-filter: blur(8px) !important;
-  background: rgba(255,255,255,0.93) !important;
-
-  /* Mobile: bottom sheet */
-  bottom: 0;
-  left: 0;
-  right: 0;
-  border-radius: 16px 16px 0 0 !important;
-  border-top: 1px solid rgba(0,0,0,0.08) !important;
-  padding: 12px 16px 24px !important;
-  box-shadow: 0 -4px 24px rgba(0,0,0,0.12) !important;
-
-  @media (min-width: 640px) {
-    bottom: auto;
-    top: 16px;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    border-radius: 20px !important;
-    border: 1px solid rgba(255,255,255,0.6) !important;
-    padding: 10px 20px 12px !important;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.12) !important;
-    width: auto;
-  }
-`;
-
-const LegendCorner = styled.div`
-  position: absolute;
-  top: 90px;
-  right: 10px;
-  z-index: 1000;
-`;
-
-const TitleCorner = styled.div`
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1000;
-  pointer-events: none;
-  white-space: nowrap;
-
-  @media (min-width: 640px) {
-    top: auto;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-`;
 
 // ─── Layer configuration ──────────────────────────────────────────────────────
 
@@ -91,8 +25,8 @@ const LAYER_CONFIG = {
     label:         'Month',
     speedMin:      0.1,
     speedMax:      1.0,
-    velocityMin:   0.1,   // velocity at speedMin
-    velocityMax:   1.0,   // velocity at speedMax
+    velocityMin:   0.1,
+    velocityMax:   1.0,
     speedDefault:  0.5,
   },
   year: {
@@ -106,9 +40,11 @@ const LAYER_CONFIG = {
     speedMax:      1.0,
     velocityMin:   1.0,   // 100% at slider=0.1
     velocityMax:   3.0,   // 300% at slider=1.0
-    speedDefault:  0.55,  // slider value for 200% (velocity 2.0)
+    speedDefault:  0.50,  // slider value for 200% (velocity 2.0)
   },
 } as const;
+
+type LayerKey = keyof typeof LAYER_CONFIG;
 
 /** Maps a slider value (0.1–1.0) to the TimingObject velocity for a given layer. */
 function computeVelocity(slider: number, layerKey: LayerKey): number {
@@ -116,10 +52,6 @@ function computeVelocity(slider: number, layerKey: LayerKey): number {
   const t = (slider - speedMin) / (speedMax - speedMin);
   return velocityMin + t * (velocityMax - velocityMin);
 }
-
-type LayerKey = keyof typeof LAYER_CONFIG;
-
-// ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function formatDateLabel(position: number, layerKey: LayerKey): string {
   const cfg = LAYER_CONFIG[layerKey];
@@ -141,9 +73,9 @@ export default function MapView() {
   const rgbsRef        = useRef<RgbColor[]>(buildColorLUT('Greys'));
   const speedRef       = useRef<number>(LAYER_CONFIG.year.speedDefault);
   const activeLayerRef = useRef<LayerKey>('year');
-  const layersRef      = useRef<Record<LayerKey, L.GridLayer> | null>(null);
+  const layersRef      = useRef<Record<LayerKey, VideoLayer> | null>(null);
   const sshEnabledRef  = useRef(false);
-  const scrubPlayRef   = useRef(false); // was playing before scrub started
+  const scrubPlayRef   = useRef(false);
 
   const [colormapName, setColormapName] = useState<ColormapName>('Greys');
   const [position,    setPosition]    = useState(0);
@@ -154,15 +86,12 @@ export default function MapView() {
   const [speed,       setSpeed]       = useState<number>(LAYER_CONFIG.year.speedDefault);
   const [isBuffering, setIsBuffering] = useState(false);
 
-  // Keep sshEnabledRef in sync so Leaflet event handlers see the current value.
   useEffect(() => { sshEnabledRef.current = sshEnabled; }, [sshEnabled]);
 
   useEffect(() => {
     rgbsRef.current = buildColorLUT(colormapName);
     if (layersRef.current) {
-      Object.values(layersRef.current).forEach((l) => {
-        if (typeof (l as any).repaintAllTiles === 'function') (l as any).repaintAllTiles();
-      });
+      Object.values(layersRef.current).forEach((l) => l.repaintAllTiles());
     }
   }, [colormapName]);
 
@@ -209,7 +138,7 @@ export default function MapView() {
           }),
         ],
       ),
-    ) as Record<LayerKey, L.GridLayer>;
+    ) as Record<LayerKey, VideoLayer>;
 
     layersRef.current = layers;
 
@@ -224,7 +153,7 @@ export default function MapView() {
 
     (Object.keys(LAYER_CONFIG) as LayerKey[])
       .filter((k) => k !== 'year')
-      .forEach((k) => (layers[k] as any).setSuspended(true));
+      .forEach((k) => layers[k].setSuspended(true));
 
     // ── Zoom / pan buffering ───────────────────────────────────────────────
     const state = { wasPlaying: false };
@@ -250,8 +179,7 @@ export default function MapView() {
     };
 
     const scheduleBufferedResume = () => {
-      const activeL = layers[activeLayerRef.current] as any;
-      if (typeof activeL.syncAllTiles === 'function') activeL.syncAllTiles();
+      layers[activeLayerRef.current].syncAllTiles();
       if (panZoomTimer) clearTimeout(panZoomTimer);
       panZoomTimer = setTimeout(() => { panZoomTimer = null; finishBuffering(); }, 500);
     };
@@ -269,8 +197,7 @@ export default function MapView() {
         firstLoad = false;
         to.update({ velocity: computeVelocity(speedRef.current, activeLayerRef.current) });
       }
-      const activeL = layers[activeLayerRef.current] as any;
-      if (typeof activeL.kickLayerDraw === 'function') activeL.kickLayerDraw();
+      layers[activeLayerRef.current].kickLayerDraw();
     };
     Object.values(layers).forEach((l) => l.on('tilesready', onTilesReady));
 
@@ -297,22 +224,17 @@ export default function MapView() {
       if (layerSwitchTimer) clearTimeout(layerSwitchTimer);
       layerSwitchTimer = setTimeout(() => { layerSwitchTimer = null; finishBuffering(); }, 2000);
 
-      (layers[oldKey] as any).setSuspended(true);
-      (layers[newKey] as any).setSuspended(false);
+      layers[oldKey].setSuspended(true);
+      layers[newKey].setSuspended(false);
     });
 
     // ── SSH readout (hover) ────────────────────────────────────────────────
     const onLayerMouseMove = (evt: L.LeafletMouseEvent) => {
       if (!sshEnabledRef.current) return;
       const canvas = evt.originalEvent.target as HTMLCanvasElement;
-      const activeL = layers[activeLayerRef.current] as any;
-      if (typeof activeL.samplePixel !== 'function') return;
       const { offsetX: x, offsetY: y } = evt.originalEvent;
-      const brightness = activeL.samplePixel(canvas, x, y);
-      if (brightness === null) {
-        setSshValue(null);
-        return;
-      }
+      const brightness = layers[activeLayerRef.current].samplePixel(canvas, x, y);
+      if (brightness === null) { setSshValue(null); return; }
       const ssh = brightnessToSSH(brightness);
       setSshValue(`${ssh >= 0 ? '+' : ''}${ssh.toFixed(2)} m`);
     };
@@ -326,8 +248,7 @@ export default function MapView() {
 
     to.startUpdateLoop(100);
     to.on('ended', () => {
-      const activeL = layers[activeLayerRef.current] as any;
-      if (typeof activeL?.syncAllTiles === 'function') activeL.syncAllTiles();
+      layers[activeLayerRef.current].syncAllTiles();
       setTimeout(() => to.update({ velocity: computeVelocity(speedRef.current, activeLayerRef.current) }), 500);
     });
     to.on('timeupdate', () => {
@@ -336,8 +257,7 @@ export default function MapView() {
       setIsPlaying(velocity !== 0);
       if (velocity !== 0 && !resyncInterval) {
         resyncInterval = setInterval(() => {
-          const activeL = layers[activeLayerRef.current] as any;
-          if (typeof activeL.syncAllTiles === 'function') activeL.syncAllTiles();
+          layers[activeLayerRef.current].syncAllTiles();
         }, 500);
       } else if (velocity === 0 && resyncInterval) {
         clearInterval(resyncInterval);
@@ -375,7 +295,6 @@ export default function MapView() {
     }
   }, []);
 
-  // ─── Scrubber callbacks ─────────────────────────────────────────────────
   const handleScrubStart = useCallback(() => {
     if (!timingRef.current) return;
     const { velocity } = timingRef.current.query();
@@ -386,8 +305,7 @@ export default function MapView() {
   const handleScrub = useCallback((pos: number) => {
     if (!timingRef.current) return;
     timingRef.current.update({ position: pos });
-    const activeL = layersRef.current?.[activeLayerRef.current] as any;
-    if (typeof activeL?.forceSyncAllTiles === 'function') activeL.forceSyncAllTiles();
+    layersRef.current?.[activeLayerRef.current].forceSyncAllTiles();
   }, []);
 
   const handleScrubEnd = useCallback(() => {
@@ -397,10 +315,9 @@ export default function MapView() {
     }
   }, []);
 
-  // ─── SSH toggle ─────────────────────────────────────────────────────────
   const handleSshToggle = useCallback(() => {
     setSshEnabled((prev) => {
-      if (prev) setSshValue(null); // clear readout when disabling
+      if (prev) setSshValue(null);
       return !prev;
     });
   }, []);
@@ -408,26 +325,21 @@ export default function MapView() {
   const cfg = LAYER_CONFIG[activeLayer];
 
   return (
-    <MapRoot>
-      <MapContainer ref={containerRef} id="map" />
+    <Box sx={{ position: 'relative', width: '100%', height: '100%', bgcolor: '#0f1117' }}>
+      <Box ref={containerRef} id="map" sx={{ width: '100%', height: '100%' }} />
 
       {/* Buffering overlay */}
       {isBuffering && (
-        <Box
-          sx={{
-            position: 'absolute', inset: 0, zIndex: 999,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          <Paper
-            elevation={4}
-            sx={{
-              display: 'flex', alignItems: 'center', gap: 1.25,
-              bgcolor: 'rgba(10,10,10,0.65)', backdropFilter: 'blur(6px)',
-              color: 'white', px: 2.5, py: 1.25, borderRadius: 3,
-            }}
-          >
+        <Box sx={{
+          position: 'absolute', inset: 0, zIndex: 999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none',
+        }}>
+          <Paper elevation={4} sx={{
+            display: 'flex', alignItems: 'center', gap: 1.25,
+            bgcolor: 'rgba(10,10,10,0.65)', backdropFilter: 'blur(6px)',
+            color: 'white', px: 2.5, py: 1.25, borderRadius: 3,
+          }}>
             <CircularProgress size={16} sx={{ color: 'white' }} />
             <Typography sx={{ fontSize: 13, fontWeight: 500 }}>Syncing…</Typography>
           </Paper>
@@ -435,7 +347,32 @@ export default function MapView() {
       )}
 
       {/* Control panel */}
-      <ControlPanel elevation={4}>
+      <Paper
+        elevation={4}
+        sx={{
+          position: 'absolute',
+          zIndex: 1000,
+          backdropFilter: 'blur(8px)',
+          bgcolor: 'rgba(255,255,255,0.93)',
+          // Mobile: bottom sheet
+          bottom: 0, left: 0, right: 0,
+          borderRadius: '16px 16px 0 0',
+          borderTop: '1px solid rgba(0,0,0,0.08)',
+          padding: '12px 16px 24px',
+          boxShadow: '0 -4px 24px rgba(0,0,0,0.12)',
+          // Desktop: floating card
+          '@media (min-width: 640px)': {
+            bottom: 'auto', top: '16px',
+            left: '50%', right: 'auto',
+            transform: 'translateX(-50%)',
+            borderRadius: '20px',
+            border: '1px solid rgba(255,255,255,0.6)',
+            padding: '10px 20px 12px',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.12)',
+            width: 'auto',
+          },
+        }}
+      >
         <PlaybackControls
           isPlaying={isPlaying}
           position={position}
@@ -474,31 +411,31 @@ export default function MapView() {
             </Button>
           }
         />
-      </ControlPanel>
+      </Paper>
 
-      <LegendCorner>
+      {/* Colormap legend */}
+      <Box sx={{ position: 'absolute', top: 90, right: 10, zIndex: 1000 }}>
         <ColormapLegend value={colormapName} onChange={setColormapName} />
-      </LegendCorner>
+      </Box>
 
-      <TitleCorner>
-        <Paper
-          elevation={3}
-          sx={{
-            bgcolor: 'rgba(10,10,10,0.65)',
-            backdropFilter: 'blur(6px)',
-            color: 'white',
-            px: 1.5,
-            py: 0.75,
-            borderRadius: 2.5,
-          }}
-        >
+      {/* Title — top-center on mobile, bottom-center on desktop */}
+      <Box sx={{
+        position: 'absolute',
+        top: 12, left: '50%', transform: 'translateX(-50%)',
+        zIndex: 1000, pointerEvents: 'none', whiteSpace: 'nowrap',
+        '@media (min-width: 640px)': { top: 'auto', bottom: 24, left: '50%', transform: 'translateX(-50%)' },
+      }}>
+        <Paper elevation={3} sx={{
+          bgcolor: 'rgba(10,10,10,0.65)', backdropFilter: 'blur(6px)',
+          color: 'white', px: 1.5, py: 0.75, borderRadius: 2.5,
+        }}>
           <Typography sx={{ fontSize: 12, fontWeight: 500, lineHeight: 1.4 }}>
             Sea Surface Height (SSH) Anomaly · 1993–2018
           </Typography>
         </Paper>
-      </TitleCorner>
+      </Box>
 
       <SshReadout value={sshEnabled ? sshValue : null} />
-    </MapRoot>
+    </Box>
   );
 }
