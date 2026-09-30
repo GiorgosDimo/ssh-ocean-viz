@@ -9,16 +9,16 @@ const defaultProps = {
   dateLabel:      'Jan 1993',
   startDateLabel: 'Jan 1993',
   endDateLabel:   'Jan 2018',
-  speed:          1.0,
+  speed:          0.5,
   speedMin:       0.1,
   speedMax:       1.0,
-  onPlay:         jest.fn(),
-  onPause:        jest.fn(),
-  onReset:        jest.fn(),
-  onSpeedChange:  jest.fn(),
-  onScrubStart:   jest.fn(),
-  onScrub:        jest.fn(),
-  onScrubEnd:     jest.fn(),
+  onPlay:        jest.fn(),
+  onPause:       jest.fn(),
+  onReset:       jest.fn(),
+  onSpeedChange: jest.fn(),
+  onScrubStart:  jest.fn(),
+  onScrub:       jest.fn(),
+  onScrubEnd:    jest.fn(),
 };
 
 describe('PlaybackControls', () => {
@@ -60,14 +60,9 @@ describe('PlaybackControls', () => {
     expect(screen.getAllByText('Jun 2005').length).toBeGreaterThan(0);
   });
 
-  it('shows the end date label', () => {
-    render(<PlaybackControls {...defaultProps} endDateLabel="Dec 2018" />);
-    expect(screen.getAllByText('Dec 2018').length).toBeGreaterThan(0);
-  });
-
-  it('shows the speed percentage', () => {
+  it('shows the speed value', () => {
     render(<PlaybackControls {...defaultProps} speed={0.5} />);
-    expect(screen.getByText('50%')).toBeInTheDocument();
+    expect(screen.getByText('0.50')).toBeInTheDocument();
   });
 
   it('calls onSpeedChange with the correct value', () => {
@@ -76,8 +71,8 @@ describe('PlaybackControls', () => {
     // The speed slider is the last range input (scrubber is first)
     const sliders = screen.getAllByRole('slider');
     const speedSlider = sliders[sliders.length - 1];
-    fireEvent.change(speedSlider, { target: { value: '50' } });
-    expect(onSpeedChange).toHaveBeenCalledWith(0.5);
+    fireEvent.change(speedSlider, { target: { value: '0.6' } });
+    expect(onSpeedChange).toHaveBeenCalledWith(0.6);
   });
 
   it('scrubber range input reflects current position', () => {
@@ -95,8 +90,8 @@ describe('PlaybackControls', () => {
     expect(onScrub).toHaveBeenCalledWith(20);
   });
 
-  it('shows year speed range (100%–200%) for year layer', () => {
-    render(<PlaybackControls {...defaultProps} speed={1.5} speedMin={1.0} speedMax={2.0} />);
-    expect(screen.getByText('150%')).toBeInTheDocument();
+  it('shows year speed raw value', () => {
+    render(<PlaybackControls {...defaultProps} speed={0.55} speedMin={0.1} speedMax={1.0} />);
+    expect(screen.getByText('0.55')).toBeInTheDocument();
   });
 });

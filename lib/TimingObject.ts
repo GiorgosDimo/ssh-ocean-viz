@@ -8,7 +8,7 @@
  * Replaces: https://webtiming.github.io/timingsrc/lib/timingsrc-v2.js
  */
 
-type TimingEvent = 'timeupdate' | 'change';
+type TimingEvent = 'timeupdate' | 'change' | 'ended';
 type TimingCallback = () => void;
 
 export interface TimingState {
@@ -37,7 +37,8 @@ export class TimingObject {
     this._wallRef = this._now();
     this._listeners = new Map<TimingEvent, Set<TimingCallback>>([
       ['timeupdate', new Set<TimingCallback>()],
-      ['change', new Set<TimingCallback>()],
+      ['change',     new Set<TimingCallback>()],
+      ['ended',      new Set<TimingCallback>()],
     ]);
   }
 
@@ -51,9 +52,9 @@ export class TimingObject {
     if (this._velocity !== 0) {
       const elapsed = this._now() - this._wallRef;
       let next = this._position + this._velocity * elapsed;
-      // Clamp + auto-loop at end of range
+      // Clamp at range boundaries; startUpdateLoop handles end-of-animation.
       if (next >= this._range[1]) {
-        next = this._range[0];
+        next = this._range[1];
       } else if (next < this._range[0]) {
         next = this._range[0];
       }
@@ -104,12 +105,17 @@ export class TimingObject {
     this._intervalId = setInterval(() => {
       if (this._velocity === 0) return;
       const { position } = this.query();
-      this._emit('timeupdate');
-      // Auto-loop
       if (position >= this._range[1]) {
+        // End of animation: stop playback and reset to start.
+        this._velocity = 0;
         this._position = this._range[0];
         this._wallRef = this._now();
+        this._emit('change');
+        this._emit('timeupdate');
+        this._emit('ended');
+        return;
       }
+      this._emit('timeupdate');
     }, intervalMs);
   }
 

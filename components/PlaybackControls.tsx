@@ -1,23 +1,71 @@
 'use client';
 
+import { ReactNode } from 'react';
+import { Stack, Button, Slider, Typography, Box } from '@mui/material';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import PauseIcon from '@mui/icons-material/Pause';
+import SkipPreviousIcon from '@mui/icons-material/SkipPrevious';
+import styled from 'styled-components';
+
 interface PlaybackControlsProps {
-  isPlaying:    boolean;
-  position:     number;
-  maxPosition:  number;
-  dateLabel:    string;
+  isPlaying:      boolean;
+  position:       number;
+  maxPosition:    number;
+  dateLabel:      string;
   startDateLabel: string;
-  endDateLabel: string;
-  speed:        number;
-  speedMin:     number;
-  speedMax:     number;
-  onPlay:       () => void;
-  onPause:      () => void;
-  onReset:      () => void;
-  onSpeedChange: (speed: number) => void;
-  onScrubStart:  () => void;
-  onScrub:       (position: number) => void;
-  onScrubEnd:    () => void;
+  endDateLabel:   string;
+  speed:          number;
+  speedMin:       number;
+  speedMax:       number;
+  onPlay:         () => void;
+  onPause:        () => void;
+  onReset:        () => void;
+  onSpeedChange:  (speed: number) => void;
+  onScrubStart:   () => void;
+  onScrub:        (position: number) => void;
+  onScrubEnd:     () => void;
+  sshNode?:       ReactNode;
 }
+
+const DateText = styled(Typography)`
+  font-size: 11px !important;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+`;
+
+const DateBold = styled(Typography)`
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  color: #222;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+`;
+
+const SpeedBadge = styled(Typography)`
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #555;
+  min-width: 32px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+`;
+
+const TimelineBox = styled(Box)`
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  gap: 0;
+`;
+
+const ICON_BTN_SX = {
+  minWidth: 0,
+  px: { xs: 0.75, sm: 1.5 },
+  py: 0.5,
+  fontSize: 13,
+  textTransform: 'none',
+} as const;
 
 export default function PlaybackControls({
   isPlaying,
@@ -36,98 +84,123 @@ export default function PlaybackControls({
   onScrubStart,
   onScrub,
   onScrubEnd,
+  sshNode,
 }: PlaybackControlsProps) {
-  const speedPct    = Math.round(speed * 100);
-  const speedMinPct = Math.round(speedMin * 100);
-  const speedMaxPct = Math.round(speedMax * 100);
+  const pct = maxPosition > 0 ? (position / maxPosition) * 100 : 0;
 
   return (
-    // Mobile: vertical stack filling the bottom sheet.
-    // sm+: single horizontal row (original layout).
-    <div className="flex flex-col gap-2 w-full sm:flex-row sm:items-center sm:gap-3 sm:w-auto">
+    <Stack sx={{
+      flexDirection: 'row',
+      flexWrap: { xs: 'wrap', sm: 'nowrap' },
+      alignItems: 'center',
+      gap: { xs: 0.75, sm: 1.5 },
+    }}>
 
-      {/* ── Row 1 (mobile) / inline (desktop): transport + date label ── */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onReset}
-          title="Reset to start"
-          aria-label="Reset to start"
-          className="px-2 py-1.5 sm:px-3 sm:py-1 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 active:scale-95 transition-all"
+      {/* Transport — order 1 on both layouts; icon-only on mobile, icon+text on desktop */}
+      <Stack
+        direction="row"
+        spacing={0.75}
+        alignItems="center"
+        sx={{ order: 1, flexShrink: 0 }}
+      >
+        <Button
+          size="small" variant="outlined" onClick={onReset} title="Reset to start"
+          sx={{ ...ICON_BTN_SX, borderColor: '#ddd', color: '#444', '&:hover': { borderColor: '#bbb', bgcolor: '#f5f5f5' } }}
         >
-          ⏮<span className="hidden sm:inline"> Reset</span>
-        </button>
+          <SkipPreviousIcon fontSize="small" />
+          <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' }, ml: 0.5 }}>Reset</Box>
+        </Button>
 
         {isPlaying ? (
-          <button
-            onClick={onPause}
-            title="Pause"
-            aria-label="Pause"
-            className="px-2 py-1.5 sm:px-3 sm:py-1 rounded-lg text-sm font-medium bg-amber-100 hover:bg-amber-200 active:scale-95 transition-all"
+          <Button
+            size="small" variant="contained" onClick={onPause} title="Pause"
+            sx={{ ...ICON_BTN_SX, minWidth: 40, bgcolor: '#facc15', color: '#1a1a1a', boxShadow: 'none', '&:hover': { bgcolor: '#eab308', boxShadow: 'none' } }}
           >
-            ⏸<span className="hidden sm:inline"> Pause</span>
-          </button>
+            <PauseIcon fontSize="small" />
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' }, ml: 0.5 }}>Pause</Box>
+          </Button>
         ) : (
-          <button
-            onClick={onPlay}
-            title="Play"
-            aria-label="Play"
-            className="px-2 py-1.5 sm:px-3 sm:py-1 rounded-lg text-sm font-medium bg-green-100 hover:bg-green-200 active:scale-95 transition-all"
+          <Button
+            size="small" variant="contained" onClick={onPlay} title="Play"
+            color="success" sx={ICON_BTN_SX}
           >
-            ▶<span className="hidden sm:inline"> Play</span>
-          </button>
+            <PlayArrowIcon fontSize="small" />
+            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' }, minWidth: 40, ml: 0.5 }}>Play</Box>
+          </Button>
         )}
+      </Stack>
 
-        {/* Date label — shown inline with transport on mobile */}
-        <span className="sm:hidden flex-1 text-center text-sm font-semibold text-gray-800 tabular-nums truncate">
-          {dateLabel}
-        </span>
-
-        {/* Speed badge — mobile only quick-read */}
-        <span className="sm:hidden text-xs font-medium text-gray-500 tabular-nums">{speedPct}%</span>
-      </div>
-
-      {/* ── Timeline scrubber ── */}
-      <div className="flex flex-col gap-0.5 w-full sm:min-w-[260px] sm:w-auto">
-        {/* Date / end header — desktop only (mobile shows date in row 1) */}
-        <div className="hidden sm:flex justify-between text-[10px] text-gray-500 tabular-nums px-0.5">
-          <span className="font-semibold text-gray-700">{dateLabel}</span>
-          <span>{endDateLabel}</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={maxPosition}
-          step={maxPosition / 1000}
-          value={position}
+      {/* Timeline — Row 2 on mobile (full width), inline on desktop */}
+      <TimelineBox sx={{ order: { xs: 3, sm: 2 }, width: { xs: '100%', sm: 'auto' }, minWidth: { sm: '260px' } }}>
+        {/*
+         * Label is inside this positioned Box so left:pct% is relative to the
+         * same coordinate space as the MUI Slider thumb — exact horizontal alignment.
+         */}
+        <Box
+          sx={{ position: 'relative', pt: '18px' }}
           onPointerDown={onScrubStart}
-          onChange={(e) => onScrub(Number(e.target.value))}
           onPointerUp={onScrubEnd}
-          className="w-full h-2 accent-blue-500 cursor-pointer"
-          title={dateLabel}
-        />
-        <div className="flex justify-between text-[9px] text-gray-400 px-0.5">
-          <span>{startDateLabel}</span>
-          <span>{endDateLabel}</span>
-        </div>
-      </div>
+        >
+          <DateBold sx={{ position: 'absolute', top: 1, left: `${pct}%`, transform: 'translateX(-50%)' }}>
+            {dateLabel}
+          </DateBold>
+          <Slider
+            value={position}
+            min={0}
+            max={maxPosition}
+            step={maxPosition / 1000}
+            onChange={(_, v) => onScrub(v as number)}
+            size="small"
+            sx={{
+              py: 0.5,
+              color: '#3b82f6',
+              '& .MuiSlider-thumb': {
+                width: 3,
+                height: 18,
+                borderRadius: 1,
+                '&::before': { boxShadow: 'none' },
+                '&:hover, &.Mui-focusVisible': { boxShadow: 'none' },
+              },
+              '& .MuiSlider-track': { height: 3 },
+              '& .MuiSlider-rail': { height: 3 },
+            }}
+          />
+        </Box>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 0.25 }}>
+          <DateText>{startDateLabel}</DateText>
+          <DateText>{endDateLabel}</DateText>
+        </Box>
+      </TimelineBox>
 
-      {/* ── Speed slider ── */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-gray-500 whitespace-nowrap">Speed</span>
-        <input
-          type="range"
-          min={speedMinPct}
-          max={speedMaxPct}
-          step={5}
-          value={speedPct}
-          onChange={(e) => onSpeedChange(Number(e.target.value) / 100)}
-          className="w-full sm:w-20 h-1.5 accent-blue-500 cursor-pointer"
-          title={`${speedPct}%`}
+      {/* Speed — Row 1 on mobile (after transport), inline on desktop */}
+      <Box sx={{
+        order: { xs: 2, sm: 3 },
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+      }}>
+        <Typography sx={{ fontSize: 11, color: '#888', whiteSpace: 'nowrap', display: { xs: 'none', sm: 'block' } }}>
+          Speed
+        </Typography>
+        <Slider
+          value={speed}
+          min={speedMin}
+          max={speedMax}
+          step={(speedMax - speedMin) / 18}
+          onChange={(_, v) => onSpeedChange(v as number)}
+          size="small"
+          sx={{ width: { xs: 60, sm: 80 }, color: '#3b82f6', '& .MuiSlider-thumb': { width: 12, height: 12 } }}
         />
-        <span className="text-xs font-medium text-gray-700 w-10 tabular-nums text-right">
-          {speedPct}%
-        </span>
-      </div>
-    </div>
+        <SpeedBadge>{speed.toFixed(2)}</SpeedBadge>
+      </Box>
+
+      {/* SSH slot — Row 1 on mobile (same order as speed, after it in DOM), 4th on desktop */}
+      {sshNode && (
+        <Box sx={{ order: { xs: 2, sm: 4 }, flexShrink: 0 }}>
+          {sshNode}
+        </Box>
+      )}
+    </Stack>
   );
 }

@@ -4,6 +4,7 @@ import type { RgbColor } from './colormap';
 
 const FRAME_INTERVAL_MS     = 100;
 const TRANSPARENT_THRESHOLD = 30;
+const MAX_VIDEO_POOL        = 12;
 // Seek threshold: if a video's currentTime is more than one 25fps frame from
 // the target, snap it to the exact target time so all tiles paint the same
 // frame.  mediaSync was removed in favour of this explicit seek approach
@@ -15,6 +16,14 @@ const SEEK_THRESHOLD             = 0.04;
 // SEEK_THRESHOLD so normal per-video drift (≤ 2 × SEEK_THRESHOLD spread) is
 // handled by the regular per-target check without triggering a full resync.
 const INTER_VIDEO_DRIFT_THRESHOLD = 0.1;
+// Maps Leaflet tile zoom → SSH data zoom (which tile/{z}/... directory to use).
+// Two consecutive map zoom steps share the same data zoom so the browser only
+// loads new video files every other zoom level instead of every step.
+//   tile 1 → data 1   (map zoom 1.0)
+//   tile 2 → data 1   (map zoom 1.5 / 2.0 — parent tile, cropped 2×)
+//   tile 3 → data 2   (map zoom 3.0 / 3.5 — parent tile, cropped 2×)
+//   tile 4 → data 3   (map zoom 4.0 / 4.5 — parent tile, cropped 2×)
+const DATA_ZOOM_FOR_TILE_Z = [0, 1, 1, 2, 3] as const;
 
 export interface VideoTileLayerOptions extends L.GridLayerOptions {
   src:          string;
@@ -55,12 +64,9 @@ interface LayerGL {
 }
 
 function buildLayerGL(canvas: HTMLCanvasElement): LayerGL | null {
-  // preserveDrawingBuffer keeps the framebuffer stable so ctx2d.drawImage
-  // can read the shared canvas after gl.drawArrays completes.
   const gl = canvas.getContext('webgl', {
-    alpha:                 true,
-    premultipliedAlpha:    false,
-    preserveDrawingBuffer: true,
+    alpha:              true,
+    premultipliedAlpha: false,
   }) as WebGLRenderingContext | null;
   if (!gl) return null;
 
@@ -154,7 +160,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   // would cause their activeTiles entries to collide, silently discarding the
   // central tile's paintFrame.  A monotone counter avoids that entirely.
   let   tileSeq = 0;
-  interface TileState { paintFrame: () => void; }
+  interface TileState { paintFrame: () => void; srcX: number; srcY: number; srcW: number; srcH: number; }
   const activeTiles       = new Map<string, TileState>();
   // canvas element → tileId; used by samplePixel to find the right video.
   const canvasToTileId    = new Map<HTMLCanvasElement, string>();
@@ -163,12 +169,11 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   let   sampleCanvas: HTMLCanvasElement | null = null;
   let   sampleCtx:    CanvasRenderingContext2D | null = null;
   const pendingSeekTiles = new Set<string>();
-  // URLs whose video is currently mid-seek.  seekDriftedVideos() blocks while
-  // this is non-empty so all tiles in a batch land on the same frame.  When
-  // the last seek in a batch completes, onVideoSeeked chains immediately into
-  // seekDriftedVideos() so a target that arrived mid-batch is picked up without
-  // waiting for the next 100ms tick.
-  const pendingSeekUrls  = new Set<string>();
+  // Tracks when each URL's seek was last issued (ms). Used to override the
+  // video.seeking guard when a seek stalls — if a seek takes >SEEK_STALE_MS the
+  // browser is waiting on the network; re-issuing to the current target unsticks it.
+  const seekIssuedAt  = new Map<string, number>();
+  const SEEK_STALE_MS = 400;
   // Batch all rVFC/seeked-triggered paints into one rAF so every tile composites
   // in the same browser frame instead of trickling in over several ms.
   const pendingRafPaints = new Set<string>();
@@ -186,7 +191,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   let   anyTileStartedLoading = false;
 
   // Persistent seeked listeners (repaint when paused); cleaned on tileunload.
-  const paintListeners = new Map<string, { video: HTMLVideoElement; fn: () => void }>();
+  const paintListeners = new Map<string, { video: HTMLVideoElement; fn: () => void; errFn: () => void }>();
 
   // Map the tile's root element → tileId so tileunload (which provides the
   // DOM element, not the wrapped coords) can find the right entry to clean up.
@@ -231,18 +236,12 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   // Seek any video whose currentTime has drifted past SEEK_THRESHOLD from the
   // target.  Called by both the RAF loop and the setTimeout tick.
   const seekDriftedVideos = () => {
-    // Don't issue new seeks while any video from the last batch is still
-    // decoding: fast tiles would get re-seeked to a newer target before slow
-    // tiles finish the old one, showing two different frames across tile borders.
-    if (pendingSeekUrls.size > 0) return;
+    if (document.hidden) return;
     const { position } = timingObject.query();
     const targetTime   = position * speedRatio;
 
     // Measure inter-video spread: if any two videos differ by more than
-    // INTER_VIDEO_DRIFT_THRESHOLD, one has fallen behind the group.  Seek
-    // every video back to targetTime so they all land on the same frame
-    // instead of only patching the outlier (which would still look unsynced
-    // for the tick where the others haven't been re-seeked yet).
+    // INTER_VIDEO_DRIFT_THRESHOLD, one has fallen behind the group.
     const urlToTime = new Map<string, number>();
     activeTiles.forEach((_, tileId) => {
       if (pendingSeekTiles.has(tileId)) return;
@@ -258,16 +257,19 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       if (spread > INTER_VIDEO_DRIFT_THRESHOLD) hardResync = true;
     }
 
-    const urlsSought   = new Set<string>();
+    const urlsSought = new Set<string>();
     activeTiles.forEach((_, tileId) => {
       if (pendingSeekTiles.has(tileId)) return;
       const url   = tileIdToUrl.get(tileId);
       const entry = url ? videoPool.get(url) : undefined;
-      if (!entry?.isReady || urlsSought.has(url!) || pendingSeekUrls.has(url!)) return;
+      if (!entry?.isReady || urlsSought.has(url!)) return;
+      // Skip if mid-seek, unless the seek has been pending too long (stalled network).
+      // ?? Infinity: if we never issued this seek (e.g. kickoff did), always skip.
+      if (entry.video.seeking && Date.now() - (seekIssuedAt.get(url!) ?? Infinity) < SEEK_STALE_MS) return;
       const { video } = entry;
       if (hardResync || Math.abs(video.currentTime - targetTime) > SEEK_THRESHOLD) {
         urlsSought.add(url!);
-        pendingSeekUrls.add(url!);
+        seekIssuedAt.set(url!, Date.now());
         video.currentTime = targetTime;
       }
     });
@@ -316,6 +318,11 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
   // ── Get or create a pooled video ──────────────────────────────────────────
   const acquireVideo = (url: string): PoolEntry => {
     let entry = videoPool.get(url);
+    if (!entry && videoPool.size >= MAX_VIDEO_POOL) {
+      for (const [u, e] of videoPool) {
+        if (e.refs === 0) { releaseVideo(u); break; }
+      }
+    }
     if (!entry) {
       const video = document.createElement('video');
       video.src      = url;
@@ -392,6 +399,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
     entry.destroyed = true;
     entry.pendingKickoffs.length = 0;
     videoPool.delete(url);
+    seekIssuedAt.delete(url);
     // Remove listeners and tell the browser to stop buffering/decoding.
     // Without this the video element keeps network connections open and
     // continues decoding frames in the background, burning CPU and RAM that
@@ -413,6 +421,15 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       });
     },
 
+    // Use Math.floor instead of Leaflet's default Math.round so half-step map
+    // zooms (1.5, 2.5, 3.5, 4.5) stay at the lower integer tile zoom and are
+    // handled by CSS upscaling rather than loading a new set of tile videos.
+    _clampZoom(zoom: number) {
+      const map = (this as any)._map as L.Map | undefined;
+      const floored = map ? Math.floor(map.getZoom()) : Math.floor(zoom);
+      return (L.GridLayer.prototype as any)._clampZoom.call(this, floored);
+    },
+
     onAdd(map: L.Map) {
       L.GridLayer.prototype.onAdd.call(this, map);
       L.DomUtil.addClass(this._container as HTMLElement, 'leaflet-interactive');
@@ -423,13 +440,27 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       // different world-repetitions can receive identical (x,y,z).  Use a
       // monotone counter as the per-instance key to avoid Map collisions.
       const tileId  = `t${tileSeq++}`;
+      const size    = this.getTileSize() as L.Point;
       const numCols = 1 << coords.z;
       const tileX   = ((coords.x % numCols) + numCols) % numCols;
-      const videoUrl = `${src}/${coords.z}/${tileX}/${coords.y}.mp4`;
+      // Look up the SSH data zoom for this Leaflet tile zoom.  Two Leaflet tile
+      // zoom steps map to the same data zoom so video files are reused across
+      // half-step map zooms; only the CSS scale and sub-region change.
+      const dataZ    = DATA_ZOOM_FOR_TILE_Z[Math.min(coords.z, DATA_ZOOM_FOR_TILE_Z.length - 1)];
+      const zDiff    = coords.z - dataZ;
+      const dScale   = 1 << zDiff;
+      const eX       = tileX >> zDiff;
+      const eY       = coords.y >> zDiff;
+      const videoUrl = `${src}/${dataZ}/${eX}/${eY}.mp4`;
+      // Sub-region of the data tile video to display in this canvas.
+      // When dataZ === coords.z (zDiff=0), this is a full-tile blit with no crop.
+      const tileSrcW = size.x / dScale;
+      const tileSrcH = size.y / dScale;
+      const tileSrcX = (tileX & (dScale - 1)) * tileSrcW;
+      const tileSrcY = (coords.y & (dScale - 1)) * tileSrcH;
 
       const div  = L.DomUtil.create('div', 'leaflet-tile') as HTMLDivElement;
       divToTileId.set(div, tileId);
-      const size = this.getTileSize() as L.Point;
 
       const canvas = document.createElement('canvas');
       canvas.width  = size.x;
@@ -438,6 +469,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       L.DomUtil.addClass(canvas, 'leaflet-interactive');
       const ctx2d = canvas.getContext('2d');
       div.appendChild(canvas);
+      canvas.style.visibility = 'hidden'; // revealed after first seek to correct frame
       (this as L.GridLayer).addInteractiveTarget(canvas);
 
       // Lazy WebGL init (once per layer, on the first tile).
@@ -505,10 +537,10 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
             glCanvasLut  = lutVersion;
           }
           ctx2d.globalCompositeOperation = 'copy';
-          ctx2d.drawImage(sharedGLCanvas, 0, 0);
+          ctx2d.drawImage(sharedGLCanvas, tileSrcX, tileSrcY, tileSrcW, tileSrcH, 0, 0, canvas.width, canvas.height);
           ctx2d.globalCompositeOperation = 'source-over';
         } else if (ctx1 && ctx2d) {
-          ctx1.drawImage(video, 0, 0, canvas.width, canvas.height);
+          ctx1.drawImage(video, tileSrcX, tileSrcY, tileSrcW, tileSrcH, 0, 0, canvas.width, canvas.height);
           const imageData = ctx1.getImageData(0, 0, canvas.width, canvas.height);
           const data = imageData.data;
           const rgbs = options.getRgbs();
@@ -522,7 +554,7 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
         }
       };
 
-      activeTiles.set(tileId, { paintFrame });
+      activeTiles.set(tileId, { paintFrame, srcX: tileSrcX, srcY: tileSrcY, srcW: tileSrcW, srcH: tileSrcH });
       anyTileStartedLoading = true;
       pendingSeekTiles.add(tileId);
 
@@ -531,42 +563,35 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       // drift correction).  The RAF immediately calls paintFrame() after
       // seeking, which may show one stale frame; this handler repaints with
       // the correct decoded frame ~30 ms later.
-      const onVideoSeeked = () => {
-        const tileUrl = tileIdToUrl.get(tileId);
-        if (tileUrl) pendingSeekUrls.delete(tileUrl);
-        schedulePaintFrame(tileId);
-        // Chain: if this was the last pending seek in the batch, immediately
-        // seek to the latest target rather than waiting up to 100ms for the
-        // next tick.  seekDriftedVideos() returns early if pendingSeekUrls is
-        // non-empty, so concurrent calls from tiles sharing a URL are no-ops.
-        if (pendingSeekUrls.size === 0) seekDriftedVideos();
-      };
+      const onVideoSeeked = () => { schedulePaintFrame(tileId); };
+      const onVideoError  = () => { seekDriftedVideos(); };
       video.addEventListener('seeked', onVideoSeeked);
-      paintListeners.set(tileId, { video, fn: onVideoSeeked });
+      video.addEventListener('error', onVideoError);
+      paintListeners.set(tileId, { video, fn: onVideoSeeked, errFn: onVideoError });
 
-      // Kickoff: remove from pendingSeekTiles and start/paint once video is ready.
+      // Kickoff: seek to current playback position (even when paused) before
+      // showing the tile.  This fixes both the "frame 0 flash" on zoom and
+      // inter-tile desync when new tiles load during playback.
       const kickoff = () => {
-        pendingSeekTiles.delete(tileId);
+        const target = timingObject.query().position * speedRatio;
         const { velocity } = timingObject.query();
-        if (velocity !== 0) {
-          startLayerDraw();
-          checkAllReady();
-        } else if (video.videoWidth === 0) {
-          // loadeddata fired but the browser hasn't decoded the first video frame
-          // yet (videoWidth === 0). Force a seek so the browser decodes the frame;
-          // paintFrame() is called from the seeked handler once it's ready.
-          pendingSeekTiles.add(tileId);
-          const target = timingObject.query().position * speedRatio;
+        if (velocity !== 0) startLayerDraw();
+
+        if (Math.abs(video.currentTime - target) > SEEK_THRESHOLD || video.videoWidth === 0) {
           video.addEventListener('seeked', () => {
             pendingSeekTiles.delete(tileId);
+            canvas.style.visibility = '';
             paintFrame();
             checkAllReady();
           }, { once: true });
-          // Seeking to the same currentTime still triggers seeked and forces a
-          // frame decode; use a tiny positive offset at t=0 to guarantee it fires.
           video.currentTime = target > 0 ? target : 0.001;
         } else {
-          paintFrame();
+          // Pool hit: video already at the right frame.
+          pendingSeekTiles.delete(tileId);
+          canvas.style.visibility = '';
+          // When paused, paint immediately (RAF isn't running).
+          // When playing, the RAF loop will paint within ~16 ms.
+          if (velocity === 0) paintFrame();
           checkAllReady();
         }
       };
@@ -632,8 +657,6 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       if (Math.abs(video.currentTime - targetTime) > 0.1) {
         if (!urlsNeedingSeek.has(url!)) {
           urlsNeedingSeek.add(url!);
-          // Guard against the RAF re-seeking this URL while our seek is in flight.
-          pendingSeekUrls.add(url!);
           // Only one tile per URL is tracked in pendingSeekTiles; the others
           // repaint via their persistent seeked listeners.
           pendingSeekTiles.add(tileId);
@@ -667,7 +690,6 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
       const { video } = entry;
       if (!urlsSought.has(url!)) {
         urlsSought.add(url!);
-        pendingSeekUrls.add(url!);
         pendingSeekTiles.add(tileId);
         video.addEventListener('seeked', () => {
           pendingSeekTiles.delete(tileId);
@@ -694,9 +716,13 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
     if (video.readyState < 2 || video.videoWidth === 0) return null;
     if (!sampleCtx) return null;
     sampleCtx.drawImage(video, 0, 0, sampleCanvas!.width, sampleCanvas!.height);
-    const px = Math.max(0, Math.min(Math.floor(x), sampleCanvas!.width  - 1));
-    const py = Math.max(0, Math.min(Math.floor(y), sampleCanvas!.height - 1));
-    const { data } = sampleCtx.getImageData(px, py, 1, 1);
+    const px  = Math.max(0, Math.min(Math.floor(x), sampleCanvas!.width  - 1));
+    const py  = Math.max(0, Math.min(Math.floor(y), sampleCanvas!.height - 1));
+    // Map canvas pixel → video pixel, accounting for parent-tile crop.
+    const ts  = activeTiles.get(tileId);
+    const vx  = ts ? Math.max(0, Math.min(Math.floor(ts.srcX + px * ts.srcW / sampleCanvas!.width),  sampleCanvas!.width  - 1)) : px;
+    const vy  = ts ? Math.max(0, Math.min(Math.floor(ts.srcY + py * ts.srcH / sampleCanvas!.height), sampleCanvas!.height - 1)) : py;
+    const { data } = sampleCtx.getImageData(vx, vy, 1, 1);
     const brightness = data[0] / 255; // red channel = greyscale value
     if (brightness < TRANSPARENT_THRESHOLD / 255) return null;
     return brightness;
@@ -728,7 +754,11 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
 
     // Remove persistent seeked listener.
     const pl = paintListeners.get(tileId);
-    if (pl) { pl.video.removeEventListener('seeked', pl.fn); paintListeners.delete(tileId); }
+    if (pl) {
+      pl.video.removeEventListener('seeked', pl.fn);
+      pl.video.removeEventListener('error', pl.errFn);
+      paintListeners.delete(tileId);
+    }
 
     activeTiles.delete(tileId);
     pendingSeekTiles.delete(tileId);
@@ -739,8 +769,6 @@ export function createVideoTileLayer(options: VideoTileLayerOptions): L.GridLaye
 
     if (url) {
       releaseVideo(url);
-      // If no more tiles reference this URL, clear any pending-seek guard.
-      if (!videoPool.has(url)) pendingSeekUrls.delete(url);
     }
   });
 

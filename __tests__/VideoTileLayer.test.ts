@@ -148,7 +148,7 @@ describe('VideoTileLayer – video pool deduplication', () => {
     const layer  = createVideoTileLayer({ src: '/tiles', timingObject: to, getRgbs });
 
     capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
-    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 }); // different y
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 }); // different y (y=1 maps to same eY=0 at dataZ=1)
 
     expect(videos).toHaveLength(2);
     void layer;
@@ -200,7 +200,7 @@ describe('VideoTileLayer – kickoff and tilesready', () => {
     (layer as any).on('tilesready', tilesReady);
 
     capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
-    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 }); // different URL
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 }); // different URL (y=1 → same eY as y=0 at dataZ=1)
 
     // Load only the first video
     makeVideoReady(videos[0]);
@@ -219,7 +219,7 @@ describe('VideoTileLayer – kickoff and tilesready', () => {
     (layer as any).on('tilesready', tilesReady);
 
     capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
-    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 }); // second tile
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 }); // second tile (distinct URL)
 
     makeVideoReady(videos[0]);
     fireEvent(videos[0], 'loadeddata'); // first ok
@@ -337,11 +337,13 @@ describe('VideoTileLayer – world-wrap URL construction', () => {
   beforeEach(() => { to = makeTo(); videos = spyOnVideoCreation(); });
   afterEach(() => { to.destroy(); });
 
+  // Use z=1 where DATA_ZOOM_FOR_TILE_Z[1]=1 (dataZ=tileZ, zDiff=0), so the URL
+  // is /1/<tileX>/<y>.mp4 and the /${z}/${expectedX}/${y} assertion still holds.
   it.each([
-    [2, -1, 0, 3], // x=-1 → x=3 at zoom 2
-    [2, -2, 0, 2], // x=-2 → x=2
-    [2,  4, 0, 0], // x=4  → x=0
-    [2,  5, 0, 1], // x=5  → x=1
+    [1, -1, 0, 1], // x=-1 → x=1 at zoom 1
+    [1, -2, 0, 0], // x=-2 → x=0
+    [1,  2, 0, 0], // x=2  → x=0
+    [1,  3, 0, 1], // x=3  → x=1
   ])('zoom=%i raw_x=%i y=%i wraps to tileX=%i', (z, rawX, y, expectedX) => {
     const layer = createVideoTileLayer({ src: '/tiles', timingObject: to, getRgbs });
     capturedProto.createTile.call(tileCtx, { z, x: rawX, y });
@@ -461,7 +463,7 @@ describe('VideoTileLayer – tile unload', () => {
     (layer as any).on('tilesready', tilesReady);
 
     const div0 = capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
-    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 }); // different URL
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 }); // different URL (y=2 → eY=1)
 
     // Unload first tile before its video loads
     fireTileUnload(layer, div0);
@@ -490,7 +492,7 @@ describe('VideoTileLayer – repaintAllTiles (colormap fix)', () => {
     const layer = createVideoTileLayer({ src: '/tiles', timingObject: to, getRgbs });
 
     capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
-    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 }); // second URL
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 }); // second URL (y=2 → eY=1)
 
     makeVideoReady(videos[0]);
     fireEvent(videos[0], 'loadeddata');
@@ -757,12 +759,12 @@ describe('VideoTileLayer – autoplay: all videos playing, all canvases updated'
     (layer as any).on('tilesready', tilesReady);
 
     // 4 tiles: 2 unique URLs × 2 world-wrap copies each
-    //   /tiles/2/0/0.mp4 → tiles (z=2,x=0,y=0) and (z=2,x=4,y=0)
-    //   /tiles/2/0/1.mp4 → tiles (z=2,x=0,y=1) and (z=2,x=4,y=1)
+    //   /tiles/1/0/0.mp4 → tiles (z=2,x=0,y=0) and (z=2,x=4,y=0)  [dataZ=1,eX=0,eY=0]
+    //   /tiles/1/0/1.mp4 → tiles (z=2,x=0,y=2) and (z=2,x=4,y=2)  [dataZ=1,eX=0,eY=1]
     capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
     capturedProto.createTile.call(tileCtx, { z: 2, x: 4, y: 0 }); // wrap → same URL
-    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 });
-    capturedProto.createTile.call(tileCtx, { z: 2, x: 4, y: 1 }); // wrap → same URL
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 }); // y=2→eY=1, distinct URL
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 4, y: 2 }); // wrap → same URL as y=2
 
     expect(videos).toHaveLength(2); // pool deduplication: 2 unique videos for 4 tiles
 
@@ -790,6 +792,10 @@ describe('VideoTileLayer – autoplay: all videos playing, all canvases updated'
     to.update({ velocity: 0.5 });
     (layer as any).kickLayerDraw();
 
+    // Flush the seeked-phase batch RAF (scheduled by onVideoSeeked) so the counts
+    // below reflect only the layer RAF loop, not the initial batch paint.
+    drainRaf(0); // batchRaf paints; layerLoopRaf(ts=0) skips (<100ms) and requeues
+
     // Clear counts from the seeked-phase initial paints
     mockGl.drawArrays.mockClear();
     mockCtx2d.drawImage.mockClear();
@@ -811,7 +817,7 @@ describe('VideoTileLayer – autoplay: all videos playing, all canvases updated'
     const layer = createVideoTileLayer({ src: '/tiles', timingObject: to, getRgbs });
 
     capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
-    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 });
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 }); // y=2→eY=1, distinct URL
 
     makeVideoNotDecoded(videos[0]);
     makeVideoNotDecoded(videos[1]);
@@ -873,7 +879,7 @@ describe('VideoTileLayer – layer switch round-trip (suspend → unload → rel
 
     // ── Phase 1: initial load (simulates first addLayer) ──────────────────────
     const div0 = capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
-    const div1 = capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 });
+    const div1 = capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 }); // y=2→eY=1, distinct URL
 
     makeVideoReady(videos[0]);
     fireEvent(videos[0], 'loadeddata');
@@ -900,7 +906,7 @@ describe('VideoTileLayer – layer switch round-trip (suspend → unload → rel
     // createTile is called before setSuspended(false) in the real browser.
     // New video elements are created because pool was freed.
     const div0b = capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
-    const div1b = capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 1 });
+    const div1b = capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 });
 
     // baselayerchange fires → setSuspended(false); syncAllTiles skips tiles in pendingSeekTiles
     (layer as any).setSuspended(false);
@@ -909,9 +915,9 @@ describe('VideoTileLayer – layer switch round-trip (suspend → unload → rel
     mockCtx2d.drawImage.mockClear();
 
     // Videos load for the newly-created tiles (fresh pool entries)
-    makeVideoReady(videos[2]); // new video for /tiles/2/0/0.mp4
+    makeVideoReady(videos[2]); // new video for /tiles/1/0/0.mp4
     fireEvent(videos[2], 'loadeddata');
-    makeVideoReady(videos[3]); // new video for /tiles/2/0/1.mp4
+    makeVideoReady(videos[3]); // new video for /tiles/1/0/1.mp4
     fireEvent(videos[3], 'loadeddata');
 
     // Both canvases must have been painted
@@ -1063,5 +1069,145 @@ describe('VideoTileLayer – layer switch round-trip (suspend → unload → rel
     expect(tilesReady).toHaveBeenCalledTimes(1);
 
     void setCurrentTime;
+  });
+});
+
+// ── video.seeking guard — no seek storm, no permanent freeze ──────────────────
+// The seek-driven architecture issues video.currentTime = targetTime every 100ms.
+// Without a guard, each tick cancels the in-flight HTTP range request and starts a
+// new one — the data never arrives and the animation freezes.
+// The fix: skip any video that has video.seeking === true (mid-request); the next
+// tick will retry.  Other videos are NOT blocked, so no global freeze.
+
+describe('VideoTileLayer – video.seeking guard (no seek storm / freeze)', () => {
+  let to: TimingObject;
+  let videos: HTMLVideoElement[];
+  let rafCallbacks: FrameRequestCallback[];
+
+  beforeEach(() => {
+    to           = makeTo();
+    videos       = spyOnVideoCreation();
+    rafCallbacks = [];
+    jest.spyOn(global, 'requestAnimationFrame').mockImplementation((cb) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    jest.spyOn(global, 'cancelAnimationFrame').mockImplementation(() => undefined);
+  });
+  afterEach(() => { to.destroy(); });
+
+  const drainRaf = (ts: number) => {
+    const cbs = rafCallbacks.splice(0);
+    cbs.forEach(cb => cb(ts));
+  };
+
+  /** Set up a video with controllable seeking state and a tracked currentTime setter. */
+  function makeSeekableVideo(video: HTMLVideoElement) {
+    let currentTime = 0;
+    let seeking = false;
+    const seekPositions: number[] = [];
+
+    Object.defineProperty(video, 'readyState',  { value: 4, configurable: true });
+    Object.defineProperty(video, 'videoWidth',  { value: 512, configurable: true });
+    Object.defineProperty(video, 'seeking', { get: () => seeking, configurable: true });
+    Object.defineProperty(video, 'currentTime', {
+      get: () => currentTime,
+      set: (t: number) => { currentTime = t; seekPositions.push(t); },
+      configurable: true,
+    });
+
+    return {
+      seekPositions,
+      setCurrentTime: (t: number) => { currentTime = t; },
+      setSeeking: (v: boolean) => { seeking = v; },
+    };
+  }
+
+  it('skips seeking a video while video.seeking = true and resumes when false', () => {
+    const layer = createVideoTileLayer({ src: '/tiles', timingObject: to, getRgbs });
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
+
+    const { seekPositions, setSeeking } = makeSeekableVideo(videos[0]);
+    fireEvent(videos[0], 'loadeddata');
+    to.update({ velocity: 1 });
+
+    // Advance timing object so there is drift, then drain two RAF ticks to seek
+    to.update({ position: 5 });
+    drainRaf(0);
+    drainRaf(100);
+    const seeksBeforeBlock = seekPositions.length;
+    expect(seeksBeforeBlock).toBeGreaterThan(0); // at least one seek was issued
+
+    // Simulate video is mid-seek (range request in-flight)
+    setSeeking(true);
+    to.update({ position: 15 }); // advance timing further
+    drainRaf(200);
+    drainRaf(300);
+
+    // No new seeks while seeking = true
+    expect(seekPositions.length).toBe(seeksBeforeBlock);
+
+    // Seek completes — next tick should resume
+    setSeeking(false);
+    to.update({ position: 20 });
+    drainRaf(400);
+    drainRaf(500);
+
+    expect(seekPositions.length).toBeGreaterThan(seeksBeforeBlock);
+    void layer;
+  });
+
+  it('issues seeks across the full animation range (0→30) without getting stuck', () => {
+    const layer = createVideoTileLayer({ src: '/tiles', timingObject: to, getRgbs });
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
+
+    // seeking = false throughout: simulates instant seeks (data already buffered)
+    const { seekPositions } = makeSeekableVideo(videos[0]);
+    fireEvent(videos[0], 'loadeddata');
+    to.update({ velocity: 1 });
+
+    // Drive the animation from 0 to 30 in 31 steps.
+    // Each step: advance position, then drain two RAF ticks (gap ≥ FRAME_INTERVAL_MS=100ms)
+    // so seekDriftedVideos() runs at least once per step.
+    for (let step = 0; step <= 30; step++) {
+      to.update({ position: step });
+      drainRaf(step * 200);
+      drainRaf(step * 200 + 100);
+    }
+
+    // Seeks must have been issued across the full range
+    expect(seekPositions.length).toBeGreaterThan(20);
+    const maxSeeked = Math.max(...seekPositions);
+    expect(maxSeeked).toBeGreaterThan(25); // reached near the end of the animation
+    void layer;
+  });
+
+  it('does not freeze the second video while the first is mid-seek', () => {
+    const layer = createVideoTileLayer({ src: '/tiles', timingObject: to, getRgbs });
+
+    // Two tiles with different URLs.
+    // At z=2, dataZ=1, zDiff=1: eY = y >> 1 so y=0→eY=0, y=2→eY=1 (different data tiles).
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 0 });
+    capturedProto.createTile.call(tileCtx, { z: 2, x: 0, y: 2 });
+    expect(videos).toHaveLength(2);
+
+    const ctrl0 = makeSeekableVideo(videos[0]);
+    const ctrl1 = makeSeekableVideo(videos[1]);
+
+    fireEvent(videos[0], 'loadeddata');
+    fireEvent(videos[1], 'loadeddata');
+    to.update({ velocity: 1 });
+
+    // Video 0 is mid-seek; video 1 is ready
+    ctrl0.setSeeking(true);
+    to.update({ position: 10 });
+    drainRaf(0);
+    drainRaf(100);
+
+    // Video 0: no seek (blocked by video.seeking)
+    expect(ctrl0.seekPositions.length).toBe(0);
+    // Video 1: seek was issued (not blocked)
+    expect(ctrl1.seekPositions.length).toBeGreaterThan(0);
+    void layer;
   });
 });

@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Serve large video tile assets from /public without size warnings
   experimental: {},
+  compiler: {
+    styledComponents: true,
+  },
 
   async headers() {
     return [
