@@ -7,7 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "fix-tiles": "node scripts/fix-tile-mp4s.mjs"
+    "fix-tiles": "node scripts/fix-tile-mp4s.mjs",
+    "typecheck": "tsc --noEmit",
+    "check": "jest --no-coverage && tsc --noEmit",
+    "test:watch": "jest --watch --no-coverage",
+    "typecheck:watch": "tsc --noEmit --watch",
+    "postinstall": "sh scripts/setup-hooks.sh"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

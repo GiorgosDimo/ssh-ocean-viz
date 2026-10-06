@@ -1,6 +1,6 @@
 # SSH Anomaly Visualiser
 
-WebGIS app for exploring Sea Surface Height (SSH) anomalies across the global ocean from 1993 to 2018, built as an MSc thesis project.
+WebGIS app for exploring Sea Surface Height (SSH) anomalies across the global ocean from 1993 to 2018.
 
 ## What it does
 
